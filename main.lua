@@ -60,6 +60,7 @@ local FlashcardDialog = InputContainer:extend{
 
 function FlashcardDialog:init()
     local Device = require("device")
+    self.covers_fullscreen = true
     self.key_events = {
         Close = { { Device.input.group.Back } },
         NextPage = { { Device.input.group.PgFwd } },
@@ -379,6 +380,7 @@ function Flashcards:showCard()
     local dialog = self:buildCardDialog(self.quiz, card, false)
     self.current_dialog = dialog
     UIManager:show(dialog)
+    UIManager:setDirty(nil, "full")
 end
 
 function Flashcards:showRevealed()
@@ -388,6 +390,7 @@ function Flashcards:showRevealed()
     local dialog = self:buildCardDialog(self.quiz, card, true)
     self.current_dialog = dialog
     UIManager:show(dialog)
+    UIManager:setDirty(nil, "full")
 end
 
 function Flashcards:markCard(correct)
@@ -404,6 +407,19 @@ local function contentBlock(text, face, w, h)
         width = w,
         height = h,
         fgcolor = Blitbuffer.COLOR_BLACK,
+    }
+end
+
+local BoldScrollTextWidget = ScrollTextWidget:extend{}
+function BoldScrollTextWidget:init()
+    ScrollTextWidget.init(self)
+    self.text_widget = TextWidget:new{
+        text = self.text,
+        face = self.face,
+        width = self.width,
+        height = self.height,
+        fgcolor = self.fgcolor,
+        bold = true,
     }
 end
 
@@ -435,7 +451,13 @@ function Flashcards:buildCardDialog(quiz, card, revealed)
 
     local body = VerticalGroup:new{
         TextWidget:new{ text = _("Question"), face = Font:getFace("smallffont", 14), bold = true },
-        contentBlock(card.question, Font:getFace("ffont", 18), content_w, q_h),
+        BoldScrollTextWidget:new{
+            text = card.question,
+            face = Font:getFace("ffont", 18),
+            width = content_w,
+            height = q_h,
+            fgcolor = Blitbuffer.COLOR_BLACK,
+        },
         VerticalSpan:new{ width = Size.span.vertical_default },
         TextWidget:new{ text = _("Answer"), face = Font:getFace("smallffont", 14), bold = true },
         revealed and contentBlock(card.answer, Font:getFace("ffont", 16), content_w, a_h)

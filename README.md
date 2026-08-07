@@ -75,6 +75,27 @@ lua tools/flashcards-cli.lua <some>.md --auto              # headless smoke test
 
 `parser.lua` (file → cards) and `quiz.lua` (shuffle/score/missed state machine) have **no KOReader dependencies**; `main.lua` is a thin adapter over KOReader widgets and is exercised on the device.
 
+## Debugging
+
+If an error occurs or no cards appear during a quiz:
+
+* **On-screen error dialog**: All menu handlers are wrapped in feedback handlers. If an exception occurs, an `InfoMessage` dialog pops up on screen displaying the error message.
+* **Log files**:
+  * **On-device log**: Timestamped log entries are appended to `<koreader_settings>/flashcards.log` as well as KOReader's system `crash.log`.
+  * **Level fallback**: Log calls use `info`, `warn`, `err`, and `debug` levels; unknown levels safely fall back to `logger.info`, so a failed lookup can never crash the plugin.
+* **CLI & Smoke tests**:
+  * Run host unit tests:
+
+    ```bash
+    lua run_busted_tests.lua
+    ```
+
+  * Run the CLI smoke test on fixtures off-device:
+
+    ```bash
+    lua tools/flashcards-cli.lua tests/fixtures/notes --auto
+    ```
+
 ## Cleaning up
 
 **Tools → Flashcards → Clear Quiz History** forgets the saved missed-card set. The plugin writes nothing else: no caches, no generated files, no changes to your `.md` files.

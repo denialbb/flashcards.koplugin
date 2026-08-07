@@ -120,8 +120,53 @@ function Flashcards:init()
         self.settings:saveSetting("root", DataStorage:getDataDir() .. "/notes")
         self.settings:flush()
     end
+    self.debug_log_path = DataStorage:getSettingsDir() .. "/flashcards.log"
     self.current_dialog = nil
+    self:log("info", "Flashcards plugin initialized; settings %s; debug log %s",
+        self.settings_file, self.debug_log_path)
     self.ui.menu:registerToMainMenu(self)
+end
+
+--- Write a timestamped line to KOReader's logger (ends up in crash.log) AND to
+--- our own file at settings/flashcards.log, so history is available offline.
+function Flashcards:log(level, msg, ...)
+    local line, n = msg, select("#", ...)
+    if n > 0 then
+        local ok, res = pcall(string.format, msg, ...)
+        if ok then line = res end
+    end
+    if type(line) ~= "string" then line = tostring(line) end
+    local full = string.format("[flashcards] %s", line)
+    pcall(function()
+        local fn = logger[level] or logger.info
+        if type(fn) == "function" then
+            fn(full)
+        end
+    end)
+    pcall(function()
+        local log_h = io.open(self.debug_log_path, "a")
+        if log_h then
+            log_h:write(os.date("%Y-%m-%d %H:%M:%S") .. " " .. full .. "\n")
+            log_h:close()
+        end
+    end)
+end
+
+--- Wrap a menu handler so an thrown error is caught, logged, and shown on
+--- screen. KOReader swallows menu-callback errors silently, which is why the
+--- plugin originally looked like "nothing happened".
+function Flashcards:withFeedback(cb)
+    return function(...)
+        local ok, err = pcall(cb, ...)
+        if not ok then
+            local msg = tostring(err)
+            self:log("err", "handler error: %s\n%s", msg, debug and debug.traceback() or "")
+            UIManager:show(InfoMessage:new{
+                text = T(_("Flashcards error:\n\n%1"), msg),
+                timeout = 12,
+            })
+        end
+    end
 end
 
 function Flashcards:addToMainMenu(menu_items)
@@ -132,22 +177,22 @@ function Flashcards:addToMainMenu(menu_items)
             {
                 text = _("Start Quiz"),
                 help_text = _("Choose a theme (or all themes), then self-score each card. Missed cards are saved for review."),
-                callback = function() self:onStartQuiz() end,
+                callback = self:withFeedback(function() self:onStartQuiz() end),
             },
             {
                 text = _("Review Missed Cards"),
                 help_text = _("Re-quiz the cards you missed in your last finished quiz."),
-                callback = function() self:onReviewMissed() end,
+                callback = self:withFeedback(function() self:onReviewMissed() end),
             },
             {
                 text = _("Set Notes Folder"),
                 help_text = _("The folder searched recursively for flashcards.md files."),
-                callback = function() self:onSetNotesFolder() end,
+                callback = self:withFeedback(function() self:onSetNotesFolder() end),
             },
             {
                 text = _("Clear Quiz History"),
                 help_text = _("Forget the saved missed-card set from your last quiz."),
-                callback = function() self:onClearHistory() end,
+                callback = self:withFeedback(function() self:onClearHistory() end),
             },
         },
     }
@@ -176,11 +221,19 @@ last (deepest) file, mirroring the desktop tool's dict overwrite.
 function Flashcards:findThemeFiles(root)
     local themes = {}
     local function walk(dir)
-        local ok, iter = pcall(lfs.dir, dir)
-        if not ok then return end
+        -- NOTE: lfs.dir returns a (closure, state) pair and the generic-for wires
+        -- them together, so pcall-guard the WHOLE loop, never just the lfs.dir
+        -- call (capturing only the closure breaks the iterator and raises
+        -- "directory metatable expected, got nil").
         local entries = {}
-        for f in iter do
-            if f ~= "." and f ~= ".." then entries[#entries + 1] = f end
+        local ok, err = pcall(function()
+            for f in lfs.dir(dir) do
+                if f ~= "." and f ~= ".." then entries[#entries + 1] = f end
+            end
+        end)
+        if not ok then
+            self:log("warn", "cannot list %q: %s", dir, tostring(err))
+            return
         end
         table.sort(entries)
         for _, name in ipairs(entries) do
@@ -204,6 +257,7 @@ end
 function Flashcards:loadThemes()
     local themes = {}
     for theme, path in pairs(self:findThemeFiles(self:getRoot())) do
+        self:log("debug", "parsing %q (theme %s)", path, theme)
         local f = io.open(path, "rb")
         if f then
             local content = f:read("*a")
@@ -211,18 +265,33 @@ function Flashcards:loadThemes()
             local cards = Parser.parse(content)
             if #cards > 0 then
                 themes[theme] = { path = path, cards = cards }
+            else
+                self:log("warn", "theme %s: no parseable cards, skipped", theme)
             end
+        else
+            self:log("warn", "cannot open file: %s", path)
         end
     end
     return themes
 end
 
 function Flashcards:onStartQuiz()
+    local root = self:getRoot()
+    if not lfs.attributes(root) then
+        self:log("warn", "notes folder does not exist: %q", root)
+        UIManager:show(InfoMessage:new{
+            text = T(_("Notes folder not found:\n\n%1\n\nUse \"Set Notes Folder\" to pick a folder containing flashcards.md files."), root),
+            timeout = 10,
+        })
+        return
+    end
+
     self.themes = self:loadThemes()
     if not self.themes or next(self.themes) == nil then
+        self:log("warn", "no theme found under %q", root)
         UIManager:show(InfoMessage:new{
-            text = T(_("No flashcards.md files found under:\n\n%1"), self:getRoot()),
-            timeout = 6,
+            text = T(_("No flashcards.md files found under:\n\n%1\n\nPut flashcards.md files here (one theme per folder), or pick another folder via \"Set Notes Folder\"."), root),
+            timeout = 10,
         })
         return
     end
@@ -240,6 +309,7 @@ function Flashcards:onStartQuiz()
     local names = {}
     for name in pairs(self.themes) do names[#names + 1] = name end
     table.sort(names)
+    self:log("info", "found %d theme(s): %s", #names, table.concat(names, ", "))
     for _, name in ipairs(names) do
         local t = self.themes[name]
         table.insert(items, {

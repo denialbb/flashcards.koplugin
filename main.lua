@@ -57,6 +57,8 @@ local FlashcardDialog = InputContainer:extend{
     on_back = nil,  -- optional callback run on the physical Back key only
     on_forward = nil,
     on_backward = nil,
+    covers_fullscreen = true,
+    covers_footer = true,
 }
 
 function FlashcardDialog:init()
@@ -517,7 +519,7 @@ function Flashcards:buildCardDialog(quiz, card, revealed)
         end
         on_backward = function()
             UIManager:close(dialog)
-            self:confirmQuit()
+            self:markCard(false)
         end
         buttons = ButtonTable:new{
             width = content_w,
@@ -606,6 +608,7 @@ function Flashcards:finishQuiz()
     local text = T(_("Quiz finished.\n\nScore: %1/%2 (%3%%)\nMissed: %4"),
         s.score, s.answered, s.percent, s.missed_count)
 
+    local dialog
     local buttons_rows = {}
     if s.missed_count > 0 then
         table.insert(buttons_rows, {
@@ -632,7 +635,6 @@ function Flashcards:finishQuiz()
     local sw, sh = Screen:getWidth(), Screen:getHeight()
     local margin = Screen:scaleBySize(12)
     local content_w = sw - 2 * margin
-    local dialog
     dialog = FlashcardDialog:new{
         title = _("Quiz Summary"),
         body = VerticalGroup:new{
@@ -646,6 +648,7 @@ function Flashcards:finishQuiz()
     }
     self.current_dialog = dialog
     UIManager:show(dialog)
+    UIManager:setDirty(nil, "full")
 end
 
 --- Re-quiz the cards missed in the last finished quiz.

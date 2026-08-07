@@ -36,6 +36,7 @@ local logger            = require("logger")
 local lfs               = require("libs/libkoreader-lfs")
 local Parser            = require("parser")
 local Quiz              = require("quiz")
+local Discovery         = require("discovery")
 local _                 = require("gettext")
 local T                 = require("ffi/util").template
 local Blitbuffer        = require("ffi/blitbuffer")
@@ -217,40 +218,11 @@ Recursively find flashcards.md files under a root. Returns { theme = path }.
 A "theme" is the basename of the directory holding the file, matching the
 desktop tool. Dot-directories are skipped. Duplicated theme names keep the
 last (deepest) file, mirroring the desktop tool's dict overwrite.
-]]
+--]]
 function Flashcards:findThemeFiles(root)
-    local themes = {}
-    local function walk(dir)
-        -- NOTE: lfs.dir returns a (closure, state) pair and the generic-for wires
-        -- them together, so pcall-guard the WHOLE loop, never just the lfs.dir
-        -- call (capturing only the closure breaks the iterator and raises
-        -- "directory metatable expected, got nil").
-        local entries = {}
-        local ok, err = pcall(function()
-            for f in lfs.dir(dir) do
-                if f ~= "." and f ~= ".." then entries[#entries + 1] = f end
-            end
-        end)
-        if not ok then
-            self:log("warn", "cannot list %q: %s", dir, tostring(err))
-            return
-        end
-        table.sort(entries)
-        for _, name in ipairs(entries) do
-            local path = dir .. name
-            local attr = lfs.attributes(path)
-            if attr and attr.mode == "directory" then
-                if name:sub(1, 1) ~= "." then
-                    walk(path .. "/")
-                end
-            elseif attr and attr.mode == "file" and name == "flashcards.md" then
-                local theme = dir:sub(1, -2):match("([^/]+)$") or name
-                themes[theme] = path
-            end
-        end
-    end
-    walk(root)
-    return themes
+    return Discovery.find(root, lfs, function(msg)
+        self:log("warn", "%s", msg)
+    end)
 end
 
 --- { theme = { path =, cards = {cards} }, ... } for every theme with cards.

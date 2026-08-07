@@ -231,13 +231,17 @@ function Flashcards:getRoot()
     return self.settings:readSetting("root") or (DataStorage:getDataDir() .. "/notes")
 end
 
---- A generic menu; used for theme and deck-length selection.
 function Flashcards:showMenu(title, items)
-    UIManager:show(Menu:new{
+    local menu
+    menu = Menu:new{
         title = title,
         item_table = items,
-        is_borderless = true,
-    })
+        cancel_callback = function()
+            UIManager:close(menu)
+            UIManager:setDirty(nil, "full")
+        end,
+    }
+    UIManager:show(menu)
 end
 
 --[[
@@ -618,6 +622,7 @@ function Flashcards:finishQuiz()
                 callback = function()
                     UIManager:close(dialog)
                     self:runQuiz(Quiz.fromMissed(quiz))
+                    UIManager:setDirty(nil, "full")
                 end,
             },
         })
@@ -628,6 +633,8 @@ function Flashcards:finishQuiz()
             id = "done",
             callback = function()
                 UIManager:close(dialog)
+                self:onStartQuiz()
+                UIManager:setDirty(nil, "full")
             end,
         },
     })

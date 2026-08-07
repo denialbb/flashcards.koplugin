@@ -54,9 +54,18 @@ local FlashcardDialog = InputContainer:extend{
     body = nil,     -- any single widget (a ScrollTextWidget is typical)
     buttons = nil,  -- a ButtonTable
     on_back = nil,  -- optional callback run on the physical Back key only
+    on_forward = nil,
+    on_backward = nil,
 }
 
 function FlashcardDialog:init()
+    local Device = require("device")
+    self.key_events = {
+        Close = { { Device.input.group.Back } },
+        NextPage = { { Device.input.group.PgFwd } },
+        PrevPage = { { Device.input.group.PgBack } },
+    }
+
     local sw, sh = Screen:getWidth(), Screen:getHeight()
     local margin = Screen:scaleBySize(12)
     local content_w = sw - 2 * margin
@@ -105,6 +114,20 @@ function FlashcardDialog:onClose()
         -- stay open: on_back is expected to show a dialog over us
     else
         UIManager:close(self)
+    end
+    return true
+end
+
+function FlashcardDialog:onNextPage()
+    if self.on_forward then
+        self.on_forward()
+    end
+    return true
+end
+
+function FlashcardDialog:onPrevPage()
+    if self.on_backward then
+        self.on_backward()
     end
     return true
 end
@@ -421,7 +444,16 @@ function Flashcards:buildCardDialog(quiz, card, revealed)
 
     local dialog
     local buttons
+    local on_forward, on_backward
     if revealed then
+        on_forward = function()
+            UIManager:close(dialog)
+            self:markCard(true)
+        end
+        on_backward = function()
+            UIManager:close(dialog)
+            self:markCard(false)
+        end
         buttons = ButtonTable:new{
             width = content_w,
             buttons = {
@@ -456,6 +488,14 @@ function Flashcards:buildCardDialog(quiz, card, revealed)
             },
         }
     else
+        on_forward = function()
+            UIManager:close(dialog)
+            self:showRevealed()
+        end
+        on_backward = function()
+            UIManager:close(dialog)
+            self:confirmQuit()
+        end
         buttons = ButtonTable:new{
             width = content_w,
             buttons = {
@@ -489,6 +529,8 @@ function Flashcards:buildCardDialog(quiz, card, revealed)
         body = body,
         buttons = buttons,
         on_back = function() self:confirmQuit() end,
+        on_forward = on_forward,
+        on_backward = on_backward,
     }
     return dialog
 end

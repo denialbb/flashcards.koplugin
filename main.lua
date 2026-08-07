@@ -20,6 +20,7 @@ local InputDialog       = require("ui/widget/inputdialog")
 local Menu              = require("ui/widget/menu")
 local ScrollTextWidget  = require("ui/widget/scrolltextwidget")
 local TextWidget        = require("ui/widget/textwidget")
+local TextBoxWidget     = require("ui/widget/textboxwidget")
 local ButtonTable       = require("ui/widget/buttontable")
 local VerticalGroup     = require("ui/widget/verticalgroup")
 local VerticalSpan      = require("ui/widget/verticalspan")
@@ -413,7 +414,7 @@ end
 local BoldScrollTextWidget = ScrollTextWidget:extend{}
 function BoldScrollTextWidget:init()
     ScrollTextWidget.init(self)
-    self.text_widget = TextWidget:new{
+    self.text_widget = TextBoxWidget:new{
         text = self.text,
         face = self.face,
         width = self.width,

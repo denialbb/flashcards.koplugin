@@ -282,7 +282,7 @@ function Flashcards:onStartQuiz()
     for name in pairs(self.themes) do names[#names + 1] = name end
     table.sort(names)
     self:log("info", "found %d theme(s): %s", #names, table.concat(names, ", "))
-    for _, name in ipairs(names) do
+    for i, name in ipairs(names) do
         local t = self.themes[name]
         table.insert(items, {
             text = name:gsub("_", " "),
@@ -302,8 +302,8 @@ function Flashcards:onPickTheme(theme_name)
         local names = {}
         for name in pairs(self.themes) do names[#names + 1] = name end
         table.sort(names)
-        for _, name in ipairs(names) do
-            for _, c in ipairs(self.themes[name].cards) do
+        for i, name in ipairs(names) do
+            for j, c in ipairs(self.themes[name].cards) do
                 cards[#cards + 1] = c
             end
         end
@@ -318,7 +318,7 @@ function Flashcards:onPickTheme(theme_name)
             callback = function() self:startQuiz(total) end,
         },
     }
-    for _, n in ipairs({ 10, 25, 50 }) do
+    for i, n in ipairs({ 10, 25, 50 }) do
         if n <= total then
             table.insert(items, {
                 text = T(_("%1 cards"), n),

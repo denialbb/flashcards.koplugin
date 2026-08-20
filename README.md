@@ -1,101 +1,76 @@
-# Flashcards for KOReader
+# Flashcards Plugin for KOReader
 
 ![Lua](https://img.shields.io/badge/Lua-5.1%20%7C%205.5%20%7C%20LuaJIT-blue?logo=lua)
 ![KOReader](https://img.shields.io/badge/KOReader-Plugin-green)
 ![Status](https://img.shields.io/badge/Status-Beta-brightgreen)
 
-A pure-Lua KOReader plugin that quizzes you on your `flashcards.md` notes directly on the Kobo — the e-ink counterpart of the desktop `~/.local/bin/quiz.py` tool.
+KOReader plugin that discovers, parses, and administers interactive flashcard study sessions from Markdown notes.
 
-It reads the **same files** the desktop quiz parses:
+## File Format Specification
 
-```
----
-Q: What is the derivative of sin(x)?
-A: cos(x)
----
-Q: Next question...
-A: ...answer
-```
-
-and understands the same corpus: `---`-separated blocks, `Q:`/`A:` lines with multi-line continuation, CRLF, blank lines between cards.
-
-## Features
-
-* **Same format, same files**: full parity with the desktop quiz tool's parser (plus one forgiving extension: indented `Q:`/`A:` lines are accepted).
-* **Theme discovery**: recursively finds every `flashcards.md` under the notes folder; each containing folder is a theme, plus an "All Themes Combined" deck — just like the desktop tool.
-* **E-ink friendly flow**: pick a theme → pick a deck length (all / 10 / 25 / 50) → reveal each answer → self-score with two taps ("Got it" / "Missed"). Long questions scroll.
-* **Missed-card review**: the cards you missed are saved; "Review Missed Cards" re-quizzes exactly those, and a finished quiz offers "Review Missed" immediately.
-* **Works with syncnotes**: the default notes root matches the folder `syncnotes.koplugin` fills, so synced flashcards are quizzed with zero configuration.
-
-## Installation
-
-1. Copy the `flashcards.koplugin` folder to the Kobo:
-
-   ```bash
-   /mnt/kobo/.adds/koreader/plugins/
-   ```
-
-2. Restart KOReader, enable the plugin via **Tools → Plugin management**.
-3. **Tools → Flashcards → Start Quiz**.
-
-If your notes live elsewhere, use **Tools → Flashcards → Set Notes Folder** (default: `<koreader data>/notes`, the syncnotes download root).
-
-## Usage
-
-* **Start Quiz** — theme menu (each theme shows its card count), then a deck-length menu.
-* **Reveal Answer** — shows the answer and swaps the buttons for **Got it** / **Missed**.
-* **Quit** — leaves mid-quiz (with a confirm) and shows a partial summary.
-* **Summary** — score, percentage, and a **Review Missed** button when anything was missed.
-* The physical Back key on a card also asks to quit; on the summary it closes.
-
-## Format
+The plugin parses `flashcards.md` files structured into discrete card blocks:
 
 ```text
 ---
-Q: question — any text, can
-   span multiple lines
-A: answer, also multi-line capable
+Q: What is the time complexity of binary search?
+A: O(log n)
+---
+Q: State the fundamental theorem of calculus:
+   Part 1 and Part 2.
+A: Part 1: If f is continuous on [a,b] and F(x) = \int_a^x f(t)dt, then F'(x) = f(x).
+   Part 2: \int_a^b f(x)dx = F(b) - F(a).
 ---
 ```
 
-* Blocks are split on the literal line `---`.
-* A block needs both a `Q:` and an `A:` (an indented variant is accepted) to become a card; otherwise it is skipped.
-* Interior blank lines inside a card are preserved (matching the desktop parser).
-* Markdown/LaTeX inside cards is shown as-is — the plugin renders plain text, it does not typeset math (see `markdownreader.koplugin` for reading rendered notes).
+### Parsing Rules
 
-## Local development
+1. **Card Delimiter**: Blocks are partitioned on literal `---` boundary lines.
+2. **Field Prefixes**: Each block must contain a question line (`Q: `) and an answer line (`A: `). Leading whitespace/indentation on prefix lines is accepted.
+3. **Multi-line Continuation**: Lines following `Q:` or `A:` prior to the next prefix or boundary line are treated as multi-line continuations.
+4. **Text Representation**: Plain text rendering without LaTeX typesetting (for rendered mathematical prose, use `markdownreader.koplugin`).
 
-The logic is split out of the UI so it runs on a PC:
+## Features & Session State Flow
+
+- **Theme Discovery**: Recursively scans the configured note directory for `flashcards.md` files. Each containing folder is registered as an individual Theme, with an aggregate "All Themes Combined" option.
+- **Deck Sizing**: Configurable session sizes (`All`, `10`, `25`, `50`).
+- **Interactive Quiz Flow**:
+  1. Displays question prompt.
+  2. User taps **Reveal Answer**.
+  3. User records recall evaluation (**Got it** / **Missed**).
+  4. Session concludes with score summary and percentage calculation.
+- **Missed Deck Review**: Flashcards evaluated as missed during a session are stored in memory for targeted re-testing.
+
+## Installation & Configuration
+
+1. Copy `flashcards.koplugin` to the KOReader plugins directory:
+   ```bash
+   cp -r flashcards.koplugin /mnt/kobo/.adds/koreader/plugins/
+   ```
+2. Restart KOReader and enable the plugin under **Tools → Plugin management**.
+3. Configure note root under **Tools → Flashcards → Set Notes Folder** (defaults to `<koreader data>/notes`).
+4. Start a session via **Tools → Flashcards → Start Quiz**.
+
+## Diagnostics & Logging
+
+- **Logging**: Execution and error events are written to `<koreader_settings>/flashcards.log` and the system `crash.log`.
+- **UI Error Trapping**: Handlers catch exceptions and display actionable dialogs via `InfoMessage` widgets.
+
+## Development & Test Harness
+
+The parsing (`parser.lua`) and quiz state machine (`quiz.lua`) logic are decoupled from KOReader UI widgets:
 
 ```bash
-lua run_busted_tests.lua                 # unit tests (parser, quiz engine, CLI)
-lua tools/flashcards-cli.lua tests/fixtures/notes          # interactive
-lua tools/flashcards-cli.lua <some>.md --auto              # headless smoke test
+# Run unit test suite
+lua run_busted_tests.lua
+
+# Run interactive CLI session off-device
+lua tools/flashcards-cli.lua tests/fixtures/notes
+
+# Run headless automated smoke test
+lua tools/flashcards-cli.lua tests/fixtures/notes --auto
 ```
 
-`parser.lua` (file → cards) and `quiz.lua` (shuffle/score/missed state machine) have **no KOReader dependencies**; `main.lua` is a thin adapter over KOReader widgets and is exercised on the device.
+## State Management
 
-## Debugging
+Access **Tools → Flashcards → Clear Quiz History** to reset recorded missed flashcard sets.
 
-If an error occurs or no cards appear during a quiz:
-
-* **On-screen error dialog**: All menu handlers are wrapped in feedback handlers. If an exception occurs, an `InfoMessage` dialog pops up on screen displaying the error message.
-* **Log files**:
-  * **On-device log**: Timestamped log entries are appended to `<koreader_settings>/flashcards.log` as well as KOReader's system `crash.log`.
-  * **Level fallback**: Log calls use `info`, `warn`, `err`, and `debug` levels; unknown levels safely fall back to `logger.info`, so a failed lookup can never crash the plugin.
-* **CLI & Smoke tests**:
-  * Run host unit tests:
-
-    ```bash
-    lua run_busted_tests.lua
-    ```
-
-  * Run the CLI smoke test on fixtures off-device:
-
-    ```bash
-    lua tools/flashcards-cli.lua tests/fixtures/notes --auto
-    ```
-
-## Cleaning up
-
-**Tools → Flashcards → Clear Quiz History** forgets the saved missed-card set. The plugin writes nothing else: no caches, no generated files, no changes to your `.md` files.
